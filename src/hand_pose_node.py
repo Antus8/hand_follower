@@ -56,19 +56,18 @@ class HandDetector:
 
 
     def get_hand_center(self, index, hands, results):
-        # output = None
         for idx, classification in enumerate(results.multi_handedness):
-            if classification.classification[0].index == index:
-                # label = classification.classification[0].label
-                # text = str(label)
-                coords = tuple(np.multiply(
-                    np.array((hands.landmark[self.mp_detector.HandLandmark.MIDDLE_FINGER_MCP].x, hands.landmark[self.mp_detector.HandLandmark.MIDDLE_FINGER_MCP].y)),
-                    self.image_size).astype(int))
-                
-                # output = [text, coords]
+            coords = tuple(np.multiply(
+                np.array((hands.landmark[self.mp_detector.HandLandmark.MIDDLE_FINGER_MCP].x, hands.landmark[self.mp_detector.HandLandmark.MIDDLE_FINGER_MCP].y)),
+                self.image_size).astype(int))
 
-                return coords
+            return coords
         return None
+
+
+    def get_hand_bbox(self, index, hands, results):
+        pass
+
 
 def main():
     rospy.init_node("hand_detector_node")
