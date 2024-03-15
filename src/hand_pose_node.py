@@ -12,14 +12,14 @@ from sensor_msgs.msg import Image
 class HandDetector:
     def __init__(self):
         self.br = CvBridge()
-        self.sub = rospy.Subscriber("/camera_image", Image, self.callback)
+        self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback)
         self.mp_detector = mp.solutions.hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5)
 
         self.mp_draw = mp.solutions.drawing_utils
 
 
-    def callback(self, msg):
+    def image_callback(self, msg):
         rospy.loginfo("I received an image")
         frame = self.br.imgmsg_to_cv2(msg)
         
@@ -58,11 +58,6 @@ class HandDetector:
                 output = text, coords
 
         return output
-
-
-
-
-
 
 def main():
     rospy.init_node("subscriber_node")

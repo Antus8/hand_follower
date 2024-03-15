@@ -1,0 +1,7 @@
+<launch>
+    <node pkg="hand_follower" type="camera_publisher.py" name="camera_publisher_node"/>
+    <node pkg="hand_follower" type="hand_pose_node.py" name="hand_pose_node" output="screen"/>
+
+    <node  pkg="rviz" type="rviz" name="rviz" args="-d $(find hand_follower)/rviz/bebop_rviz.rviz"/>
+
+</launch>

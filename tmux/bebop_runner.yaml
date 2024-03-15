@@ -1,0 +1,30 @@
+session_name: bebop_autonomy
+
+
+environment:
+  DATA_PATH: /home/autonomouslab/bebop_ws/src/hand_follower
+  ROBOT_NAME: bebop
+  RATE: '1'
+  DELAY: '230'
+
+
+default-command: /bin/bash
+
+
+windows:
+  - window_name: bebop_autonomy
+    focus: true
+    layout: tiled
+    shell_command_before:
+      - rosparam set /use_sim_time true
+    panes:
+      # ROSCORE
+      - roscore
+
+      # CAMERA PUBLISHER
+      - sleep 2; rosrun hand_follower camera_publisher.py
+
+      # HAND ALGORITHM
+      - sleep 2; rosrun hand_follower hand_pose_node.py
+
+      - sleep 2; rosrun rviz rviz -d $DATA_PATH/rviz/bebop_rviz.rviz
