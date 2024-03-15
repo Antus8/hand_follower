@@ -37,26 +37,35 @@ class HandDetector:
         image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
         # rgb_frame.flags.writeable = True
         if result.multi_hand_landmarks:
-            for num, hand in enumerate(result.multi_hand_landmarks):
+            for hand in result.multi_hand_landmarks:
                 self.mp_draw.draw_landmarks(image, hand, self.mp_detector.HAND_CONNECTIONS,
                                             self.mp_draw.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=2),
                                             self.mp_draw.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2))
                 
-                out = self.get_hand_center(num, hand, result)
+                out = self.get_hand_center(hand, result)
                 if out:
-                    hand_center_x = out[0]
-                    hand_center_y = out[1]
+                    # hand_center_x = out[0]
+                    # hand_center_y = out[1]
+
+                    x_min, y_min, x_max, y_max = self.get_hand_bbox(hand, result)
+
+                    hand_center_x = int(round((x_max + x_min)/2))
+                    hand_center_y = int(round((y_max + y_min)/2))
+
                     cv2.circle(image, (hand_center_x, hand_center_y), 3, (0, 255, 0), 2)
                     cv2.circle(image, (int(self.image_size[0]/2), int(self.image_size[1]/2)), 3, (0, 255, 0), 2) # place a circle in the center of the image
 
-
                     cv2.line(image, (hand_center_x, hand_center_y), (int(self.image_size[0]/2), int(self.image_size[1]/2)), (0,255,0), 2)
+
+                    
+
+                    cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0,255,0), 2)
 
                 self.out_pub.publish(self.br.cv2_to_imgmsg(cv2.flip(image, 1)))
 
 
-    def get_hand_center(self, index, hands, results):
-        for idx, classification in enumerate(results.multi_handedness):
+    def get_hand_center(self, hands, results):
+        for classification in results.multi_handedness:
             coords = tuple(np.multiply(
                 np.array((hands.landmark[self.mp_detector.HandLandmark.MIDDLE_FINGER_MCP].x, hands.landmark[self.mp_detector.HandLandmark.MIDDLE_FINGER_MCP].y)),
                 self.image_size).astype(int))
@@ -65,8 +74,31 @@ class HandDetector:
         return None
 
 
-    def get_hand_bbox(self, index, hands, results):
-        pass
+    def get_hand_bbox(self, hands, results):
+        coords = {'index_finger_mcp':None, 'pinky_mcp':None, 'wrist':None}
+
+        for classification in results.multi_handedness:
+            coords['index_finger_mcp'] = tuple(np.multiply(
+                np.array((hands.landmark[self.mp_detector.HandLandmark.INDEX_FINGER_MCP].x, hands.landmark[self.mp_detector.HandLandmark.INDEX_FINGER_MCP].y)),
+                self.image_size).astype(int))
+
+            coords['pinky_mcp'] = tuple(np.multiply(
+                np.array((hands.landmark[self.mp_detector.HandLandmark.PINKY_MCP].x, hands.landmark[self.mp_detector.HandLandmark.PINKY_MCP].y)),
+                self.image_size).astype(int))
+
+            coords['wrist'] = tuple(np.multiply(
+                np.array((hands.landmark[self.mp_detector.HandLandmark.WRIST].x, hands.landmark[self.mp_detector.HandLandmark.WRIST].y)),
+                self.image_size).astype(int))
+
+        
+            x_min, y_min = min(coords['index_finger_mcp'][0], coords['pinky_mcp'][0], coords['wrist'][0]), min(coords['index_finger_mcp'][1], coords['pinky_mcp'][1], coords['wrist'][1])
+            x_max, y_max = max(coords['index_finger_mcp'][0], coords['pinky_mcp'][0], coords['wrist'][0]), max(coords['index_finger_mcp'][1], coords['pinky_mcp'][1], coords['wrist'][1])
+
+            return [x_min, y_min, x_max, y_max]
+
+        return None
+
+
 
 
 def main():
