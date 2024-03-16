@@ -5,6 +5,7 @@ import rospy
 import numpy as np
 import mediapipe as mp
 from cv_bridge import CvBridge
+from std_msgs.msg import String
 from sensor_msgs.msg import Image
 
 # https://youtu.be/EgjwKM3KzGU?si=lKMVMeepe7SQR7KS
@@ -14,16 +15,17 @@ class HandDetector:
         self.br = CvBridge()
         self.out_pub = rospy.Publisher("/bebop_ws/out_image", Image, queue_size=10)
         self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback)
+        self.hands_status_sub = rospy.Subscriber("/bebop_ws/hands_status", String, self.hands_status_callback, queue_size=1)
         self.mp_detector = mp.solutions.hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5)
 
         self.image_size = None
 
         self.mp_draw = mp.solutions.drawing_utils
+        self.right_counter, self.left_counter = 0, 0 
 
 
     def image_callback(self, msg):
-        rospy.loginfo("I received an image")
         frame = self.br.imgmsg_to_cv2(msg)
 
         self.image_size = [frame.shape[1], frame.shape[0]]
@@ -56,12 +58,14 @@ class HandDetector:
                     cv2.circle(image, (int(self.image_size[0]/2), int(self.image_size[1]/2)), 3, (0, 255, 0), 2) # place a circle in the center of the image
 
                     cv2.line(image, (hand_center_x, hand_center_y), (int(self.image_size[0]/2), int(self.image_size[1]/2)), (0,255,0), 2)
-
-                    
-
                     cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0,255,0), 2)
 
-                self.out_pub.publish(self.br.cv2_to_imgmsg(cv2.flip(image, 1)))
+                    final_img = cv2.flip(image, 1)
+
+                    cv2.putText(final_img, f"Total Fingers: {self.right_counter + self.left_counter}", (10,25), cv2.FONT_HERSHEY_COMPLEX, 1, (0,0,255), 2)
+                    # cv2.putText(final_img, str(self.right_counter + self.left_counter), (self.image_size[0]//2-100, 25), cv2.FONT_HERSHEY_COMPLEX, 3, (20,255,155), 10, 10)
+
+                self.out_pub.publish(self.br.cv2_to_imgmsg(final_img))
 
 
     def get_hand_center(self, hands, results):
@@ -99,6 +103,10 @@ class HandDetector:
         return None
 
 
+    def hands_status_callback(self, msg):
+        self.right_counter = int(msg.data.split(" ")[1])
+        self.left_counter = int(msg.data.split(" ")[3])
+        
 
 
 def main():
