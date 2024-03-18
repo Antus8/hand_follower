@@ -10,6 +10,9 @@ environment:
 
 default-command: /bin/bash
 
+# export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/autonomouslab/bebop_ws/devel/lib/parrot_arsdk/
+# rostopic pub --once bebop/takeoff std_msgs/Empty
+# rostopic pub --once bebop/land std_msgs/Empty
 
 windows:
   - window_name: bebop_autonomy
@@ -22,10 +25,13 @@ windows:
       - roscore
 
       # CAMERA PUBLISHER
-      - sleep 2; rosrun hand_follower camera_publisher.py
+      # - sleep 2; rosrun hand_follower camera_publisher.py
+
+      # BEBOP DRIVER
+      - sleep 2; roslaunch bebop_driver bebop_node.launch
 
       # HAND ALGORITHM
-      - sleep 2; rosrun hand_follower hand_pose_node.py
-      - sleep 2; rosrun hand_follower gesture_recognizer_node.py
+      - sleep 5; rosrun hand_follower hand_pose_node.py
+      - sleep 5; rosrun hand_follower gesture_recognizer_node.py
 
       - sleep 2; rosrun rviz rviz -d $DATA_PATH/rviz/bebop_rviz.rviz

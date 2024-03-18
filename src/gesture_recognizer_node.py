@@ -13,8 +13,8 @@ from sensor_msgs.msg import Image
 class GestureRecognizer:
     def __init__(self):
         self.br = CvBridge()
-        self.hands_status_pub = rospy.Publisher("/bebop_ws/hands_status", String, queue_size=10)
-        self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback, queue_size=1)
+        self.hands_status_pub = rospy.Publisher("/bebop/hands_status", String, queue_size=10)
+        self.sub = rospy.Subscriber("/bebop/image_raw", Image, self.image_callback, queue_size=1)
         self.mp_detector = mp.solutions.hands # mp_hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5) # hands_videos TODO: set max_num_hands
 

@@ -13,9 +13,9 @@ from sensor_msgs.msg import Image
 class HandDetector:
     def __init__(self):
         self.br = CvBridge()
-        self.out_pub = rospy.Publisher("/bebop_ws/out_image", Image, queue_size=10)
-        self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback)
-        self.hands_status_sub = rospy.Subscriber("/bebop_ws/hands_status", String, self.hands_status_callback, queue_size=1)
+        self.out_pub = rospy.Publisher("/bebop/out_image", Image, queue_size=1)
+        self.sub = rospy.Subscriber("/bebop/image_raw", Image, self.image_callback, queue_size=1)
+        self.hands_status_sub = rospy.Subscriber("/bebop/hands_status", String, self.hands_status_callback, queue_size=1)
         self.mp_detector = mp.solutions.hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5)
 
@@ -24,19 +24,32 @@ class HandDetector:
         self.mp_draw = mp.solutions.drawing_utils
         self.right_counter, self.left_counter = 0, 0 
 
+    def fake_img_callback(self, msg):
+        # Convert image message to cv2 image with RGB encoding
+        frame_rgb = self.br.imgmsg_to_cv2(msg, desired_encoding="rgb8")
+        
+        # Convert RGB to BGR format (if needed)
+        frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+        
+        # Publish the converted image message
+        self.out_pub.publish(self.br.cv2_to_imgmsg(frame_bgr))
+        
 
     def image_callback(self, msg):
-        frame = self.br.imgmsg_to_cv2(msg)
+        frame = self.br.imgmsg_to_cv2(msg, desired_encoding="rgb8")
 
+        # frame = cv2.resize(frame, dsize=(640, 480), interpolation=cv2.INTER_NEAREST)
         self.image_size = [frame.shape[1], frame.shape[0]]
-
+        
         flipped_frame = cv2.flip(frame, 1)
         
-        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
-        rgb_frame.flags.writeable = False
-        result = self.hand_detector.process(rgb_frame)
+        # rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+        # rgb_frame.flags.writeable = False
+        result = self.hand_detector.process(flipped_frame)
 
-        image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+        image = cv2.cvtColor(flipped_frame, cv2.COLOR_RGB2BGR)
+        # image = flipped_frame
+
         # rgb_frame.flags.writeable = True
         if result.multi_hand_landmarks:
             for hand in result.multi_hand_landmarks:
@@ -44,12 +57,11 @@ class HandDetector:
                                             self.mp_draw.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=2),
                                             self.mp_draw.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2))
                 
-                out = self.get_hand_center(hand, result)
-                if out:
+                # out = self.get_hand_center(hand, result)
+                x_min, y_min, x_max, y_max = self.get_hand_bbox(hand, result)
+                if x_min:
                     # hand_center_x = out[0]
                     # hand_center_y = out[1]
-
-                    x_min, y_min, x_max, y_max = self.get_hand_bbox(hand, result)
 
                     hand_center_x = int(round((x_max + x_min)/2))
                     hand_center_y = int(round((y_max + y_min)/2))
@@ -65,7 +77,11 @@ class HandDetector:
                     cv2.putText(final_img, f"Total Fingers: {self.right_counter + self.left_counter}", (10,25), cv2.FONT_HERSHEY_COMPLEX, 1, (0,0,255), 2)
                     # cv2.putText(final_img, str(self.right_counter + self.left_counter), (self.image_size[0]//2-100, 25), cv2.FONT_HERSHEY_COMPLEX, 3, (20,255,155), 10, 10)
 
+                    # final_img = cv2.cvtColor(final_img, cv2.COLOR_BGR2RGB)
                 self.out_pub.publish(self.br.cv2_to_imgmsg(final_img))
+
+        else:
+            rospy.loginfo("No detection")
 
 
     def get_hand_center(self, hands, results):
