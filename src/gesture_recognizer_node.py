@@ -14,7 +14,7 @@ class GestureRecognizer:
     def __init__(self):
         self.br = CvBridge()
         self.hands_status_pub = rospy.Publisher("/bebop/hands_status", String, queue_size=10)
-        self.sub = rospy.Subscriber("/bebop/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)
+        self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.mp_detector = mp.solutions.hands # mp_hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5) # hands_videos TODO: set max_num_hands
 
@@ -32,15 +32,17 @@ class GestureRecognizer:
 
     def image_callback(self, msg):
         self.count = {'RIGHT':0, "LEFT":0}
-        frame = self.br.imgmsg_to_cv2(msg, desired_encoding="rgb8")
+        frame = self.br.imgmsg_to_cv2(msg)
 
         self.height, self.width = frame.shape[:2]
 
         flipped_frame = cv2.flip(frame, 1)
         
-        result = self.hand_detector.process(flipped_frame)
+        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+        rgb_frame.flags.writeable = False
+        result = self.hand_detector.process(rgb_frame)
 
-        image = cv2.cvtColor(flipped_frame, cv2.COLOR_RGB2BGR)
+        image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
 
         if result.multi_handedness:
             for hand_index, hand_info in enumerate(result.multi_handedness):

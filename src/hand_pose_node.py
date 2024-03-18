@@ -14,7 +14,7 @@ class HandDetector:
     def __init__(self):
         self.br = CvBridge()
         self.out_pub = rospy.Publisher("/bebop/out_image", Image, queue_size=1)
-        self.sub = rospy.Subscriber("/bebop/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)
+        self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.hands_status_sub = rospy.Subscriber("/bebop/hands_status", String, self.hands_status_callback, queue_size=1)
         self.mp_detector = mp.solutions.hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5)
@@ -26,13 +26,16 @@ class HandDetector:
         
 
     def image_callback(self, msg):
-        frame = self.br.imgmsg_to_cv2(msg, desired_encoding="rgb8")
+        frame = self.br.imgmsg_to_cv2(msg)
         self.image_size = [frame.shape[1], frame.shape[0]]
-        
-        flipped_frame = cv2.flip(frame, 1)
-        result = self.hand_detector.process(flipped_frame)
 
-        image = cv2.cvtColor(flipped_frame, cv2.COLOR_RGB2BGR)
+        flipped_frame = cv2.flip(frame, 1)
+        
+        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+        rgb_frame.flags.writeable = False
+        result = self.hand_detector.process(rgb_frame)
+
+        image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
 
         if result.multi_hand_landmarks:
             for hand in result.multi_hand_landmarks:
