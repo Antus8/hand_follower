@@ -20,6 +20,7 @@ class HandDetector:
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5)
 
         self.image_size = None
+        self.distance_filters = [1000, 3000]
 
         self.mp_draw = mp.solutions.drawing_utils
         self.right_counter, self.left_counter = 0, 0
@@ -39,26 +40,35 @@ class HandDetector:
 
         if result.multi_hand_landmarks:
             for hand in result.multi_hand_landmarks:
-                # self.mp_draw.draw_landmarks(image, hand, self.mp_detector.HAND_CONNECTIONS,
-                #                             self.mp_draw.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=2),
-                #                             self.mp_draw.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2))
-                
                 x_min, y_min, x_max, y_max = self.get_hand_bbox(hand, result)
                 if x_min:
                     hand_center_x = int(round((x_max + x_min)/2))
                     hand_center_y = int(round((y_max + y_min)/2))
 
-                    cv2.circle(image, (hand_center_x, hand_center_y), 3, (0, 255, 0), 2)
-                    cv2.circle(image, (int(self.image_size[0]/2), int(self.image_size[1]/2)), 3, (0, 255, 0), 2) # place a circle in the center of the image
+                    area = self.get_bbox_area(x_min, y_min, x_max, y_max)
 
-                    cv2.line(image, (hand_center_x, hand_center_y), (int(self.image_size[0]/2), int(self.image_size[1]/2)), (0,255,0), 2)
-                    cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0,255,0), 2)
+                    rospy.loginfo(area)
+                    # self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max)
 
-                    final_img = cv2.flip(image, 1)
 
-                    cv2.putText(final_img, f"Total Fingers: {self.right_counter + self.left_counter}", (10,25), cv2.FONT_HERSHEY_COMPLEX, 1, (0,0,255), 2)
+    def prepare_final_img(self, image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max):
+        self.mp_draw.draw_landmarks(image, hand, self.mp_detector.HAND_CONNECTIONS,
+                                    self.mp_draw.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=2),
+                                    self.mp_draw.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2))
 
-                self.out_pub.publish(self.br.cv2_to_imgmsg(final_img))
+        cv2.circle(image, (hand_center_x, hand_center_y), 3, (0, 255, 0), 2)
+        cv2.circle(image, (int(self.image_size[0]/2), int(self.image_size[1]/2)), 3, (0, 255, 0), 2) # place a circle in the center of the image
+        cv2.line(image, (hand_center_x, hand_center_y), (int(self.image_size[0]/2), int(self.image_size[1]/2)), (0,255,0), 2)
+        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0,255,0), 2)
+
+        final_img = cv2.flip(image, 1)
+        cv2.putText(final_img, f"Total Fingers: {self.right_counter + self.left_counter}", (10,25), cv2.FONT_HERSHEY_COMPLEX, 1, (0,0,255), 2)
+        self.out_pub.publish(self.br.cv2_to_imgmsg(final_img))
+
+    
+    def get_bbox_area(self, x_min, y_min, x_max, y_max):
+        return (x_max-x_min) * (y_max - y_min)
+
 
 
     def get_hand_bbox(self, hands, results):
