@@ -17,10 +17,14 @@ class HandDetector:
         self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.hands_status_sub = rospy.Subscriber("/bebop/hands_status", String, self.hands_status_callback, queue_size=1)
         self.mp_detector = mp.solutions.hands
-        self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5)
+        self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5, max_num_hands=1)
 
         self.image_size = None
-        self.distance_filters = [1000, 3000]
+        self.distance_filters = [8700, 9700]
+
+        self.pid = [0.4, 0.4, 0.4]
+        self.previous_yaw_error = 0
+        self.previous_x_error = 0
 
         self.mp_draw = mp.solutions.drawing_utils
         self.right_counter, self.left_counter = 0, 0
@@ -47,8 +51,35 @@ class HandDetector:
 
                     area = self.get_bbox_area(x_min, y_min, x_max, y_max)
 
-                    rospy.loginfo(area)
-                    # self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max)
+                    self.track_hand(hand_center_x, image.shape[1], area)
+                    self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max)
+
+
+    def track_hand(self, hand_center_x, image_width, area):
+        yaw_error = hand_center_x - image_width//2
+        yaw_speed = -(self.pid[0]*yaw_error + self.pid[2]*(yaw_error - self.previous_yaw_error))
+        print(yaw_speed)
+        yaw_speed = int(np.clip(yaw_speed, -150, 150))
+        yaw_speed = yaw_speed / 150
+
+        x_error = abs(area - np.mean(self.distance_filters))
+        fb_speed = 20
+
+        if area > self.distance_filters[0] and area < self.distance_filters[1]:
+            # stay stationary on x axis
+            linear_x = 0
+        elif area > self.distance_filters[1]:
+            # go back
+            linear_x = -fb_speed
+        elif area < self.distance_filters[0] and area != 0:
+            # go forward
+            linear_x = fb_speed
+
+        rospy.loginfo(f"YAW SPEED: {yaw_speed}")
+        rospy.loginfo(f"LINEAR X: {linear_x}")
+        self.previous_yaw_error = yaw_error
+        
+
 
 
     def prepare_final_img(self, image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max):
