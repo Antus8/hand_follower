@@ -7,15 +7,18 @@ import mediapipe as mp
 from cv_bridge import CvBridge
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Twist
 
 # https://youtu.be/EgjwKM3KzGU?si=lKMVMeepe7SQR7KS
 
 class HandDetector:
     def __init__(self):
-        self.br = CvBridge()
-        self.out_pub = rospy.Publisher("/bebop/out_image", Image, queue_size=1)
         self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.hands_status_sub = rospy.Subscriber("/bebop/hands_status", String, self.hands_status_callback, queue_size=1)
+        self.flight_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
+        self.out_pub = rospy.Publisher("/bebop/out_image", Image, queue_size=1)
+        
+        self.br = CvBridge()
         self.mp_detector = mp.solutions.hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5, max_num_hands=1)
 
@@ -56,6 +59,19 @@ class HandDetector:
 
 
     def track_hand(self, hand_center_x, image_width, area):
+
+        '''
+        Publish a geometry_msgs/Twist to cmd_vel topic 
+        linear.x  (+)      Translate forward
+          (-)      Translate backward
+        linear.y  (+)      Translate to left
+                (-)      Translate to right
+        linear.z  (+)      Ascend
+                (-)      Descend
+        angular.z (+)      Rotate counter clockwise
+                (-)      Rotate clockwise
+        '''
+
         yaw_error = hand_center_x - image_width//2
         yaw_speed = -(self.pid[0]*yaw_error + self.pid[2]*(yaw_error - self.previous_yaw_error))
         print(yaw_speed)
@@ -75,9 +91,20 @@ class HandDetector:
             # go forward
             linear_x = fb_speed
 
+        # TODO: compose
+        flight_commands_msg = Twist()
+        flight_commands_msg.linear.x = 0
+        flight_commands_msg.linear.y = 0
+        flight_commands_msg.linear.z = 0
+        flight_commands_msg.angular.z = 0
+
+        self.flight_pub.publish(flight_commands_msg)
+
         rospy.loginfo(f"YAW SPEED: {yaw_speed}")
         rospy.loginfo(f"LINEAR X: {linear_x}")
+        rospy.loginfo(f"X ERROR: {x_error}")
         self.previous_yaw_error = yaw_error
+        
         
 
 
