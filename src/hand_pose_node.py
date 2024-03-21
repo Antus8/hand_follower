@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
 import cv2
+import time
 import rospy
 import numpy as np
 import mediapipe as mp
 from cv_bridge import CvBridge
-from std_msgs.msg import String
+from std_msgs.msg import String, Empty
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
 
@@ -15,23 +16,33 @@ class HandDetector:
     def __init__(self):
         self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.hands_status_sub = rospy.Subscriber("/bebop/hands_status", String, self.hands_status_callback, queue_size=1)
-        self.flight_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
+        self.take_off_sub = rospy.Subscriber("/bebop/takeoff", Empty, self.take_off_callback)
+        self.flight_pub = rospy.Publisher("/bebop/cmd_vel", Twist, queue_size=1)
         self.out_pub = rospy.Publisher("/bebop/out_image", Image, queue_size=1)
+
+        self.take_off = False
         
         self.br = CvBridge()
         self.mp_detector = mp.solutions.hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5, max_num_hands=1)
 
         self.image_size = None
-        self.distance_filters = [8700, 9700]
+        self.distance_filters = [5000, 20000]
 
-        self.pid = [0.4, 0.4, 0.4]
+        self.yaw_pid = [0.4, 0.4, 0.4]
         self.previous_yaw_error = 0
-        self.previous_x_error = 0
+
+        self.fb_pid = [0.4, 0.4, 0.4]
+        self.previous_fb_error = 0
 
         self.mp_draw = mp.solutions.drawing_utils
         self.right_counter, self.left_counter = 0, 0
-        
+    
+
+    def take_off_callback(self, msg):
+        self.take_off = True
+        rospy.logwarn("Drone ARMED!")
+
 
     def image_callback(self, msg):
         frame = self.br.imgmsg_to_cv2(msg)
@@ -54,8 +65,11 @@ class HandDetector:
 
                     area = self.get_bbox_area(x_min, y_min, x_max, y_max)
 
-                    self.track_hand(hand_center_x, image.shape[1], area)
-                    self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max)
+                    if self.take_off:
+                        self.track_hand(hand_center_x, image.shape[1], area)
+                        self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max)
+        else:
+            self.send_stop_command()
 
 
     def track_hand(self, hand_center_x, image_width, area):
@@ -73,41 +87,51 @@ class HandDetector:
         '''
 
         yaw_error = hand_center_x - image_width//2
-        yaw_speed = -(self.pid[0]*yaw_error + self.pid[2]*(yaw_error - self.previous_yaw_error))
-        print(yaw_speed)
+        yaw_speed = self.yaw_pid[0]*yaw_error + self.yaw_pid[2]*(yaw_error - self.previous_yaw_error)
         yaw_speed = int(np.clip(yaw_speed, -150, 150))
-        yaw_speed = yaw_speed / 150
+        
+        # Normalize between -1 and 1
+        yaw_speed = yaw_speed / 150 
 
-        x_error = abs(area - np.mean(self.distance_filters))
-        fb_speed = 20
-
+        # fb_error = area - np.mean(self.distance_filters)
+        # fb_speed = -(self.fb_pid[0]*fb_error + self.fb_pid[2]*(fb_error - self.previous_fb_error))
+        # fb_speed = int(np.clip(fb_speed, -20000, 2500))
+        # # Normalize between 0 and 1
+        # fb_speed = ((fb_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
+        
+        # if area > self.distance_filters[0] and area < self.distance_filters[1]:
+        #     # stay stationary on x axis
+        #     fb_speed = 0
+        # elif area == 0:
+        #     fb_speed = 0
         if area > self.distance_filters[0] and area < self.distance_filters[1]:
-            # stay stationary on x axis
-            linear_x = 0
+            fb_speed = 0
         elif area > self.distance_filters[1]:
-            # go back
-            linear_x = -fb_speed
-        elif area < self.distance_filters[0] and area != 0:
-            # go forward
-            linear_x = fb_speed
+            fb_speed = -0.5
+        elif area < self.distance_filters[0]:
+            fb_speed = 0.5
 
         # TODO: compose
         flight_commands_msg = Twist()
-        flight_commands_msg.linear.x = 0
+        flight_commands_msg.linear.x = fb_speed
         flight_commands_msg.linear.y = 0
         flight_commands_msg.linear.z = 0
-        flight_commands_msg.angular.z = 0
+        flight_commands_msg.angular.z = yaw_speed
 
         self.flight_pub.publish(flight_commands_msg)
 
         rospy.loginfo(f"YAW SPEED: {yaw_speed}")
-        rospy.loginfo(f"LINEAR X: {linear_x}")
-        rospy.loginfo(f"X ERROR: {x_error}")
+        # rospy.loginfo(f"FB SPEED: {fb_speed}")
+    
         self.previous_yaw_error = yaw_error
-        
+        # self.previous_fb_error = fb_error
         
 
 
+    def send_stop_command(self):
+        self.flight_pub.publish(Twist())
+
+        
 
     def prepare_final_img(self, image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max):
         self.mp_draw.draw_landmarks(image, hand, self.mp_detector.HAND_CONNECTIONS,

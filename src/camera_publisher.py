@@ -31,7 +31,7 @@ class CameraPublisher():
             if(cap.isOpened()):
                 ret, frame = cap.read()
                 if ret:
-                    rospy.logwarn('Publishing image...')
+                    # rospy.logwarn('Publishing image...')
                     self.pub.publish(self.br.cv2_to_imgmsg(frame))
                     time.sleep(0.1)
                 else:
