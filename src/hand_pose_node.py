@@ -27,10 +27,13 @@ class HandDetector:
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5, max_num_hands=1)
 
         self.image_size = None
-        self.distance_filters = [5000, 20000]
+        self.distance_filters = [7000, 11000]
 
-        self.yaw_pid = [0.4, 0.4, 0.4]
+        self.yaw_pid = [0.9, 0.4, 0.4]
         self.previous_yaw_error = 0
+
+        self.z_pid = [0.9, 0.4, 0.4]
+        self.previous_z_error = 0
 
         self.fb_pid = [0.4, 0.4, 0.4]
         self.previous_fb_error = 0
@@ -66,13 +69,13 @@ class HandDetector:
                     area = self.get_bbox_area(x_min, y_min, x_max, y_max)
 
                     if self.take_off:
-                        self.track_hand(hand_center_x, image.shape[1], area)
+                        self.track_hand(hand_center_x, hand_center_y, area)
                         self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max)
         else:
             self.send_stop_command()
 
 
-    def track_hand(self, hand_center_x, image_width, area):
+    def track_hand(self, hand_center_x, hand_center_y, area):
 
         '''
         Publish a geometry_msgs/Twist to cmd_vel topic 
@@ -86,13 +89,20 @@ class HandDetector:
                 (-)      Rotate clockwise
         '''
 
-        yaw_error = hand_center_x - image_width//2
+        # YAW
+        yaw_offset = self.image_size[0]//2 
+        yaw_error = (hand_center_x - yaw_offset) / yaw_offset # Normalized error between -1 and 1
         yaw_speed = self.yaw_pid[0]*yaw_error + self.yaw_pid[2]*(yaw_error - self.previous_yaw_error)
-        yaw_speed = int(np.clip(yaw_speed, -150, 150))
-        
-        # Normalize between -1 and 1
-        yaw_speed = yaw_speed / 150 
 
+        # yaw_speed = int(np.clip(yaw_speed, -yaw_limit, yaw_limit))
+        # yaw_speed = yaw_speed / yaw_limit # Normalize between -1 and 1
+
+        # Z Level
+        z_offset = self.image_size[1]//2
+        z_error = (hand_center_y - z_offset) / z_offset
+        z_speed = self.z_pid[0]*z_error + self.z_pid[2]*(z_error - self.previous_z_error)
+
+        # X - Forward Backward
         # fb_error = area - np.mean(self.distance_filters)
         # fb_speed = -(self.fb_pid[0]*fb_error + self.fb_pid[2]*(fb_error - self.previous_fb_error))
         # fb_speed = int(np.clip(fb_speed, -20000, 2500))
@@ -104,26 +114,26 @@ class HandDetector:
         #     fb_speed = 0
         # elif area == 0:
         #     fb_speed = 0
-        if area > self.distance_filters[0] and area < self.distance_filters[1]:
-            fb_speed = 0
-        elif area > self.distance_filters[1]:
-            fb_speed = -0.5
-        elif area < self.distance_filters[0]:
-            fb_speed = 0.5
+        # if area > self.distance_filters[0] and area < self.distance_filters[1]:
+        #     fb_speed = 0
+        # elif area > self.distance_filters[1]:
+        #     fb_speed = -0.5
+        # elif area < self.distance_filters[0]:
+        #     fb_speed = 0.5
 
-        # TODO: compose
-        flight_commands_msg = Twist()
-        flight_commands_msg.linear.x = fb_speed
-        flight_commands_msg.linear.y = 0
-        flight_commands_msg.linear.z = 0
-        flight_commands_msg.angular.z = yaw_speed
+        # flight_commands_msg = Twist()
+        # flight_commands_msg.linear.x = fb_speed
+        # flight_commands_msg.linear.y = 0
+        # flight_commands_msg.linear.z = 0
+        # flight_commands_msg.angular.z = yaw_speed
 
-        self.flight_pub.publish(flight_commands_msg)
+        # self.flight_pub.publish(flight_commands_msg)
 
-        rospy.loginfo(f"YAW SPEED: {yaw_speed}")
-        # rospy.loginfo(f"FB SPEED: {fb_speed}")
+        rospy.loginfo(f"Z ERROR: {z_error}")
+        rospy.loginfo(f"Z SPEED: {z_speed}")
     
         self.previous_yaw_error = yaw_error
+        self.previous_z_error = z_error
         # self.previous_fb_error = fb_error
         
 
@@ -169,6 +179,7 @@ class HandDetector:
                 np.array((hands.landmark[self.mp_detector.HandLandmark.WRIST].x, hands.landmark[self.mp_detector.HandLandmark.WRIST].y)),
                 self.image_size).astype(int))
 
+            # rospy.logwarn(hands.landmark[self.mp_detector.HandLandmark.WRIST].z)
         
             x_min, y_min = min(coords['index_finger_mcp'][0], coords['pinky_mcp'][0], coords['wrist'][0]), min(coords['index_finger_mcp'][1], coords['pinky_mcp'][1], coords['wrist'][1])
             x_max, y_max = max(coords['index_finger_mcp'][0], coords['pinky_mcp'][0], coords['wrist'][0]), max(coords['index_finger_mcp'][1], coords['pinky_mcp'][1], coords['wrist'][1])

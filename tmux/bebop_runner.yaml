@@ -22,10 +22,10 @@ windows:
       - rosparam set /use_sim_time true
     panes:
       # ROSCORE
-      # - roscore
+      - roscore
 
       # DRONE SIMULATION
-      - roslaunch rotors_gazebo mav_velocity_control_with_fake_driver.launch
+      # - roslaunch rotors_gazebo mav_velocity_control_with_fake_driver.launch
 
       # CAMERA PUBLISHER
       - sleep 2; rosrun hand_follower camera_publisher.py
@@ -38,4 +38,4 @@ windows:
       - sleep 5; rosrun hand_follower gesture_recognizer_node.py
       - sleep 5; rosrun bebop_teleop bebop_teleop.py
 
-      # - sleep 2; rosrun rviz rviz -d $DATA_PATH/rviz/bebop_rviz.rviz
+      - sleep 2; rosrun rviz rviz -d $DATA_PATH/rviz/bebop_rviz.rviz
