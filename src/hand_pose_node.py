@@ -3,6 +3,7 @@
 import cv2
 import time
 import rospy
+import math
 import numpy as np
 import mediapipe as mp
 from cv_bridge import CvBridge
@@ -42,6 +43,7 @@ class HandDetector:
         self.right_counter, self.left_counter = 0, 0
 
         self.display = True
+        self.max_euclidean_error = 0
     
 
     def take_off_callback(self, msg):
@@ -75,7 +77,7 @@ class HandDetector:
                         
                         if self.display:
                             x_min, y_min, x_max, y_max = self.get_hand_bbox(hand, result)
-                            self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max, mf_coords, wrist_coords)
+                            self.prepare_final_img(image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max)
         else:
             self.send_stop_command()
 
@@ -134,8 +136,8 @@ class HandDetector:
 
         # self.flight_pub.publish(flight_commands_msg)
 
-        rospy.loginfo(f"Z ERROR: {z_error}")
-        rospy.loginfo(f"Z SPEED: {z_speed}")
+        # rospy.loginfo(f"Z ERROR: {z_error}")
+        # rospy.loginfo(f"Z SPEED: {z_speed}")
     
         self.previous_yaw_error = yaw_error
         self.previous_z_error = z_error
@@ -148,15 +150,22 @@ class HandDetector:
 
         
 
-    def prepare_final_img(self, image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max, mf_coords, wrist_coords):
+    def prepare_final_img(self, image, hand, hand_center_x, hand_center_y, x_min, y_min, x_max, y_max):
         self.mp_draw.draw_landmarks(image, hand, self.mp_detector.HAND_CONNECTIONS,
                                     self.mp_draw.DrawingSpec(color=(255,0,0), thickness=2, circle_radius=2),
                                     self.mp_draw.DrawingSpec(color=(180,100,100), thickness=2, circle_radius=2))
 
+        error_palette = [(0, 255, 0), (0, 215, 255), (0, 140, 255), (0, 0 ,255)]
+        euclidean_error = int(math.sqrt(np.abs(hand_center_x - int(self.image_size[0]//2))**2 + np.abs(hand_center_y - int(self.image_size[1]//2))**2))
+        if self.max_euclidean_error == 0:
+            self.max_euclidean_error = int(math.sqrt(np.abs(self.image_size[0] - int(self.image_size[0]//2))**2 + np.abs(self.image_size[1] - int(self.image_size[1]//2))**2))
+        
+        color = error_palette[int(str(euclidean_error/100)[0])]
+
         cv2.circle(image, (hand_center_x, hand_center_y), 3, (0, 255, 0), 2)
         cv2.circle(image, (int(self.image_size[0]/2), int(self.image_size[1]/2)), 3, (0, 255, 0), 2) # place a circle in the center of the image
-        cv2.line(image, (hand_center_x, hand_center_y), (int(self.image_size[0]/2), int(self.image_size[1]/2)), (0,255,0), 2)
-        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), (0,255,0), 2)
+        cv2.line(image, (hand_center_x, hand_center_y), (int(self.image_size[0]/2), int(self.image_size[1]/2)), color, 2)
+        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color, 2)
 
         # cv2.line(image, (mf_coords[0], mf_coords[1]), (wrist_coords[0], wrist_coords[1]), (0,0,255), 2)
 
