@@ -28,7 +28,6 @@ class HandDetector:
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5, max_num_hands=1)
 
         self.image_size = None
-        self.distance_filters = [7000, 11000]
 
         self.yaw_pid = [0.9, 0.4, 0.4]
         self.previous_yaw_error = 0
@@ -36,8 +35,10 @@ class HandDetector:
         self.z_pid = [0.9, 0.4, 0.4]
         self.previous_z_error = 0
 
-        self.fb_pid = [0.4, 0.4, 0.4]
-        self.previous_fb_error = 0
+        self.x_pid = [0.9, 0.4, 0.4]
+        self.previous_x_error = 0
+        self.safe_zone = [85, 130]
+        self.lower_error_bound, self.upper_error_bound = 0, 0
 
         self.mp_draw = mp.solutions.drawing_utils
         self.right_counter, self.left_counter = 0, 0
@@ -110,39 +111,44 @@ class HandDetector:
         z_speed = self.z_pid[0]*z_error + self.z_pid[2]*(z_error - self.previous_z_error)
 
         # X - Forward Backward
-        # fb_error = area - np.mean(self.distance_filters)
-        # fb_speed = -(self.fb_pid[0]*fb_error + self.fb_pid[2]*(fb_error - self.previous_fb_error))
-        # fb_speed = int(np.clip(fb_speed, -20000, 2500))
-        # # Normalize between 0 and 1
-        # fb_speed = ((fb_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
+        x_error = dist - np.mean(self.safe_zone)
+        normalized_x_error = self.normalize_x_error(x_error)
+
+        x_speed = -(self.x_pid[0]*normalized_x_error + self.x_pid[2]*(normalized_x_error - self.previous_x_error))
+        # x_speed = int(np.clip(fb_speed, -20000, 2500))
+        # x_speed = ((x_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
         
-        # if area > self.distance_filters[0] and area < self.distance_filters[1]:
-        #     # stay stationary on x axis
-        #     fb_speed = 0
-        # elif area == 0:
-        #     fb_speed = 0
-        # if area > self.distance_filters[0] and area < self.distance_filters[1]:
-        #     fb_speed = 0
-        # elif area > self.distance_filters[1]:
-        #     fb_speed = -0.5
-        # elif area < self.distance_filters[0]:
-        #     fb_speed = 0.5
+        if (dist > self.safe_zone[0] and dist < self.safe_zone[1]) or dist == 0:
+            # stay stationary on x axis
+            x_speed = 0
+    
+        flight_commands_msg = Twist()
+        flight_commands_msg.linear.x = x_speed
+        flight_commands_msg.linear.y = 0
+        flight_commands_msg.linear.z = z_speed
+        flight_commands_msg.angular.z = yaw_speed
 
-        # flight_commands_msg = Twist()
-        # flight_commands_msg.linear.x = fb_speed
-        # flight_commands_msg.linear.y = 0
-        # flight_commands_msg.linear.z = 0
-        # flight_commands_msg.angular.z = yaw_speed
+        self.flight_pub.publish(flight_commands_msg)
 
-        # self.flight_pub.publish(flight_commands_msg)
-
-        # rospy.loginfo(f"Z ERROR: {z_error}")
+        # rospy.loginfo(f"ERROR: {normalized_x_error}")
+        # rospy.loginfo(f"SPEED: {x_speed}")
         # rospy.loginfo(f"Z SPEED: {z_speed}")
     
         self.previous_yaw_error = yaw_error
         self.previous_z_error = z_error
-        # self.previous_fb_error = fb_error
+        self.previous_x_error = normalized_x_error
         
+
+    def normalize_x_error(self, x_error):
+        if self.lower_error_bound == 0:
+            self.lower_error_bound = np.abs(30 - ((self.safe_zone[0] + self.safe_zone[1]) / 2))
+            self.upper_error_bound = self.image_size[1] - 250 - ((self.safe_zone[0] + self.safe_zone[1]) / 2)
+        
+        if x_error < 0:
+            return x_error / self.lower_error_bound
+        else:
+            return x_error / self.upper_error_bound
+
 
 
     def send_stop_command(self):
