@@ -20,7 +20,7 @@ class CameraPublisher():
 
 
        # Publishers
-       self.pub = rospy.Publisher('/bebop_ws/camera_image', Image, queue_size=10)
+       self.pub = rospy.Publisher('/bebop/image_raw', Image, queue_size=10)
 
 
    def start(self):

@@ -15,13 +15,13 @@ from geometry_msgs.msg import Twist
 
 class HandDetector:
     def __init__(self):
-        self.sub = rospy.Subscriber("/bebop_ws/camera_image", Image, self.image_callback, queue_size=1, buff_size=2**24)
+        self.sub = rospy.Subscriber("/bebop/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.hands_status_sub = rospy.Subscriber("/bebop/hands_status", String, self.hands_status_callback, queue_size=1)
-        self.take_off_sub = rospy.Subscriber("/bebop/takeoff", Empty, self.take_off_callback)
+        self.drone_status_sub = rospy.Subscriber("bebop/enable", Empty, self.drone_status_callback)
         self.flight_pub = rospy.Publisher("/bebop/cmd_vel", Twist, queue_size=1)
         self.out_pub = rospy.Publisher("/bebop/out_image", Image, queue_size=1)
 
-        self.take_off = False
+        self.drone_armed = False
         
         self.br = CvBridge()
         self.mp_detector = mp.solutions.hands
@@ -29,31 +29,37 @@ class HandDetector:
 
         self.image_size = None
 
-        self.yaw_pid = [0.9, 0.4, 0.4]
+        self.yaw_pid = [1, 0.2, 0.01]
         self.previous_yaw_error = 0
+        self.yaw_integral = 0
 
-        self.z_pid = [0.9, 0.4, 0.4]
+        self.z_pid = [1, 0.2, 0.01]
         self.previous_z_error = 0
+        self.z_integral = 0
 
-        self.x_pid = [0.9, 0.4, 0.4]
+        self.x_pid = [1, 0.2, 0.01]
         self.previous_x_error = 0
-        self.safe_zone = [85, 130]
+        self.safe_zone = [65, 100]
         self.lower_error_bound, self.upper_error_bound = 0, 0
+        self.x_integral = 0
 
         self.mp_draw = mp.solutions.drawing_utils
         self.right_counter, self.left_counter = 0, 0
 
         self.display = True
         self.max_euclidean_error = 0
+
+        self.delta_time = 0.1
     
 
-    def take_off_callback(self, msg):
-        self.take_off = True
-        rospy.logwarn("Drone ARMED!")
+    def drone_status_callback(self, msg):
+        self.drone_armed = not self.drone_armed
+        rospy.logwarn("Drone state CHANGED!")
 
 
     def image_callback(self, msg):
         frame = self.br.imgmsg_to_cv2(msg)
+        # frame = cv2.resize(frame, (856, 480))
         self.image_size = [frame.shape[1], frame.shape[0]]
 
         flipped_frame = cv2.flip(frame, 1)
@@ -73,7 +79,7 @@ class HandDetector:
 
                     dist = wrist_coords[1] - mf_coords[1]
 
-                    if self.take_off:
+                    if self.drone_armed:
                         self.track_hand(hand_center_x, hand_center_y, dist)
                         
                         if self.display:
@@ -98,9 +104,12 @@ class HandDetector:
         '''
 
         # YAW
-        yaw_offset = self.image_size[0]//2 
+        yaw_offset = self.image_size[0]//2
         yaw_error = (hand_center_x - yaw_offset) / yaw_offset # Normalized error between -1 and 1
-        yaw_speed = self.yaw_pid[0]*yaw_error + self.yaw_pid[2]*(yaw_error - self.previous_yaw_error)
+        yaw_proportional = self.yaw_pid[0]*yaw_error
+        self.yaw_integral = self.yaw_integral + self.yaw_pid[1] * yaw_error * self.delta_time
+        yaw_derivative = self.yaw_pid[2]*(yaw_error - self.previous_yaw_error)/self.delta_time
+        yaw_speed =  yaw_proportional  + yaw_derivative # + self.yaw_integral
 
         # yaw_speed = int(np.clip(yaw_speed, -yaw_limit, yaw_limit))
         # yaw_speed = yaw_speed / yaw_limit # Normalize between -1 and 1
@@ -108,13 +117,19 @@ class HandDetector:
         # Z Level
         z_offset = self.image_size[1]//2
         z_error = (hand_center_y - z_offset) / z_offset
-        z_speed = self.z_pid[0]*z_error + self.z_pid[2]*(z_error - self.previous_z_error)
+        z_proportional = self.z_pid[0]*z_error
+        self.z_integral = self.z_integral + self.yaw_pid[1] * z_error * self.delta_time
+        z_derivative = self.z_pid[2]*(z_error - self.previous_z_error)
+        z_speed = z_proportional + z_derivative # self.z_integral
 
         # X - Forward Backward
         x_error = dist - np.mean(self.safe_zone)
         normalized_x_error = self.normalize_x_error(x_error)
 
-        x_speed = -(self.x_pid[0]*normalized_x_error + self.x_pid[2]*(normalized_x_error - self.previous_x_error))
+        x_proportional = self.x_pid[0]*normalized_x_error
+        self.x_integral = self.x_integral + self.x_pid[1] * normalized_x_error * self.delta_time
+        x_derivative = self.x_pid[2]*(normalized_x_error - self.previous_x_error)
+        x_speed = -(x_proportional + x_derivative)# + self.x_integral 
         # x_speed = int(np.clip(fb_speed, -20000, 2500))
         # x_speed = ((x_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
         
@@ -125,14 +140,14 @@ class HandDetector:
         flight_commands_msg = Twist()
         flight_commands_msg.linear.x = x_speed
         flight_commands_msg.linear.y = 0
-        flight_commands_msg.linear.z = z_speed
+        flight_commands_msg.linear.z = 0
         flight_commands_msg.angular.z = yaw_speed
 
         self.flight_pub.publish(flight_commands_msg)
+        rospy.loginfo(f"SPEED: {x_speed}")
+        rospy.loginfo(f"Normalized error {normalized_x_error}")
+        rospy.loginfo(f"DIST: {dist}")
 
-        # rospy.loginfo(f"ERROR: {normalized_x_error}")
-        # rospy.loginfo(f"SPEED: {x_speed}")
-        # rospy.loginfo(f"Z SPEED: {z_speed}")
     
         self.previous_yaw_error = yaw_error
         self.previous_z_error = z_error
@@ -141,8 +156,8 @@ class HandDetector:
 
     def normalize_x_error(self, x_error):
         if self.lower_error_bound == 0:
-            self.lower_error_bound = np.abs(30 - ((self.safe_zone[0] + self.safe_zone[1]) / 2))
-            self.upper_error_bound = self.image_size[1] - 250 - ((self.safe_zone[0] + self.safe_zone[1]) / 2)
+            self.lower_error_bound = np.abs(25 - ((self.safe_zone[0] + self.safe_zone[1]) / 2))
+            self.upper_error_bound = 320 - ((self.safe_zone[0] + self.safe_zone[1]) / 2)
         
         if x_error < 0:
             return x_error / self.lower_error_bound

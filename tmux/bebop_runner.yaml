@@ -28,14 +28,14 @@ windows:
       # - roslaunch rotors_gazebo mav_velocity_control_with_fake_driver.launch
 
       # CAMERA PUBLISHER
-      - sleep 2; rosrun hand_follower camera_publisher.py
+      # - sleep 2; rosrun hand_follower camera_publisher.py
 
       # BEBOP DRIVER
-      # - sleep 2; roslaunch bebop_driver bebop_node.launch
+      - sleep 2; roslaunch bebop_driver bebop_node.launch
 
       # HAND ALGORITHM
       - sleep 5; rosrun hand_follower hand_pose_node.py
-      - sleep 5; rosrun hand_follower gesture_recognizer_node.py
+      # - sleep 5; rosrun hand_follower gesture_recognizer_node.py
       - sleep 5; rosrun bebop_teleop bebop_teleop.py
 
       - sleep 2; rosrun rviz rviz -d $DATA_PATH/rviz/bebop_rviz.rviz
