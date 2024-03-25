@@ -54,21 +54,31 @@ class HandDetector:
 
     def drone_status_callback(self, msg):
         self.drone_armed = not self.drone_armed
-        rospy.logwarn("Drone state CHANGED!")
+        rospy.logwarn(f"Drone state CHANGED! Drone is armed {self.drone_armed}")
 
 
     def image_callback(self, msg):
-        frame = self.br.imgmsg_to_cv2(msg)
-        # frame = cv2.resize(frame, (856, 480))
+        frame = self.br.imgmsg_to_cv2(msg, desired_encoding="rgb8")
         self.image_size = [frame.shape[1], frame.shape[0]]
-
-        flipped_frame = cv2.flip(frame, 1)
         
-        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
-        rgb_frame.flags.writeable = False
-        result = self.hand_detector.process(rgb_frame)
+        flipped_frame = cv2.flip(frame, 1)
+        result = self.hand_detector.process(flipped_frame)
 
-        image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+        image = cv2.cvtColor(flipped_frame, cv2.COLOR_RGB2BGR)
+
+
+
+        #frame = self.br.imgmsg_to_cv2(msg)
+        # frame = cv2.resize(frame, (856, 480))
+        #self.image_size = [frame.shape[1], frame.shape[0]]
+
+        #flipped_frame = cv2.flip(frame, 1)
+        
+        #rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+        #rgb_frame.flags.writeable = False
+        #result = self.hand_detector.process(rgb_frame)
+
+        # image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
 
         if result.multi_hand_landmarks:
             for hand in result.multi_hand_landmarks:
@@ -80,6 +90,7 @@ class HandDetector:
                     dist = wrist_coords[1] - mf_coords[1]
 
                     if self.drone_armed:
+                        print("Working........")
                         self.track_hand(hand_center_x, hand_center_y, dist)
                         
                         if self.display:
@@ -91,7 +102,7 @@ class HandDetector:
 
     def track_hand(self, hand_center_x, hand_center_y, dist):
 
-        '''
+        '''/bebop/out_image
         Publish a geometry_msgs/Twist to cmd_vel topic 
         linear.x  (+)      Translate forward
           (-)      Translate backward
@@ -130,6 +141,7 @@ class HandDetector:
         self.x_integral = self.x_integral + self.x_pid[1] * normalized_x_error * self.delta_time
         x_derivative = self.x_pid[2]*(normalized_x_error - self.previous_x_error)
         x_speed = -(x_proportional + x_derivative)# + self.x_integral 
+        x_speed = np.clip(x_speed, -0.3, 0.3)
         # x_speed = int(np.clip(fb_speed, -20000, 2500))
         # x_speed = ((x_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
         
@@ -138,7 +150,7 @@ class HandDetector:
             x_speed = 0
     
         flight_commands_msg = Twist()
-        flight_commands_msg.linear.x = x_speed
+        flight_commands_msg.linear.x = 0
         flight_commands_msg.linear.y = 0
         flight_commands_msg.linear.z = 0
         flight_commands_msg.angular.z = yaw_speed
