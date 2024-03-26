@@ -1,4 +1,4 @@
-import numpy 
+import numpy as np 
 
 class PID:
 
@@ -32,9 +32,9 @@ class PID:
             self.prev_err = err
             self.prev_t = t
 
-            if (numpy.linalg.norm(u) > self.sat):
+            if (np.linalg.norm(u) > self.sat):
                 # controller is in saturation: limit outpt, reset integral
-                u = self.sat*u/numpy.linalg.norm(u)
+                u = self.sat*u/np.linalg.norm(u)
                 self.integral = 0.0
 
             return u
