@@ -39,7 +39,7 @@ class HandDetector:
 
         self.x_pid = [1, 0.2, 0.01]
         self.previous_x_error = 0
-        self.safe_zone = [65, 100]
+        self.safe_zone = [40, 65]
         self.lower_error_bound, self.upper_error_bound = 0, 0
         self.x_integral = 0
 
@@ -131,7 +131,7 @@ class HandDetector:
         z_proportional = self.z_pid[0]*z_error
         self.z_integral = self.z_integral + self.yaw_pid[1] * z_error * self.delta_time
         z_derivative = self.z_pid[2]*(z_error - self.previous_z_error)
-        z_speed = z_proportional + z_derivative # self.z_integral
+        z_speed = -(z_proportional + z_derivative) # self.z_integral
 
         # X - Forward Backward
         x_error = dist - np.mean(self.safe_zone)
@@ -141,7 +141,7 @@ class HandDetector:
         self.x_integral = self.x_integral + self.x_pid[1] * normalized_x_error * self.delta_time
         x_derivative = self.x_pid[2]*(normalized_x_error - self.previous_x_error)
         x_speed = -(x_proportional + x_derivative)# + self.x_integral 
-        x_speed = np.clip(x_speed, -0.3, 0.3)
+        # x_speed = np.clip(x_speed, -0.3, 0.3)
         # x_speed = int(np.clip(fb_speed, -20000, 2500))
         # x_speed = ((x_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
         
@@ -150,16 +150,15 @@ class HandDetector:
             x_speed = 0
     
         flight_commands_msg = Twist()
-        flight_commands_msg.linear.x = 0
+        flight_commands_msg.linear.x = x_speed
         flight_commands_msg.linear.y = 0
         flight_commands_msg.linear.z = 0
         flight_commands_msg.angular.z = yaw_speed
 
-        self.flight_pub.publish(flight_commands_msg)
-        rospy.loginfo(f"SPEED: {x_speed}")
-        rospy.loginfo(f"Normalized error {normalized_x_error}")
-        rospy.loginfo(f"DIST: {dist}")
-
+        # self.flight_pub.publish(flight_commands_msg)
+        rospy.loginfo(f"SPEED: {z_speed}")
+        # rospy.loginfo(f"DIST: {dist}")
+        # rospy.loginfo(f"Normalized error {normalized_x_error}")
     
         self.previous_yaw_error = yaw_error
         self.previous_z_error = z_error
@@ -169,10 +168,10 @@ class HandDetector:
     def normalize_x_error(self, x_error):
         if self.lower_error_bound == 0:
             self.lower_error_bound = np.abs(25 - ((self.safe_zone[0] + self.safe_zone[1]) / 2))
-            self.upper_error_bound = 320 - ((self.safe_zone[0] + self.safe_zone[1]) / 2)
+            self.upper_error_bound = 120 - ((self.safe_zone[0] + self.safe_zone[1]) / 2)
         
         if x_error < 0:
-            return x_error / self.lower_error_bound
+            return x_error / self.lower_error_bound * 0.3
         else:
             return x_error / self.upper_error_bound
 
