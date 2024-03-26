@@ -58,27 +58,17 @@ class HandDetector:
 
 
     def image_callback(self, msg):
-        frame = self.br.imgmsg_to_cv2(msg, desired_encoding="rgb8")
-        self.image_size = [frame.shape[1], frame.shape[0]]
-        
-        flipped_frame = cv2.flip(frame, 1)
-        result = self.hand_detector.process(flipped_frame)
-
-        image = cv2.cvtColor(flipped_frame, cv2.COLOR_RGB2BGR)
-
-
-
-        #frame = self.br.imgmsg_to_cv2(msg)
+        frame = self.br.imgmsg_to_cv2(msg)
         # frame = cv2.resize(frame, (856, 480))
-        #self.image_size = [frame.shape[1], frame.shape[0]]
+        self.image_size = [frame.shape[1], frame.shape[0]]
 
-        #flipped_frame = cv2.flip(frame, 1)
+        flipped_frame = cv2.flip(frame, 1)
         
-        #rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
-        #rgb_frame.flags.writeable = False
-        #result = self.hand_detector.process(rgb_frame)
+        rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
+        rgb_frame.flags.writeable = False
+        result = self.hand_detector.process(rgb_frame)
 
-        # image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
+        image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
 
         if result.multi_hand_landmarks:
             for hand in result.multi_hand_landmarks:
