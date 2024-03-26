@@ -6,6 +6,7 @@ import rospy
 import math
 import numpy as np
 import mediapipe as mp
+from pid_regulator import PID
 from cv_bridge import CvBridge
 from std_msgs.msg import String, Empty
 from sensor_msgs.msg import Image
@@ -15,41 +16,48 @@ from geometry_msgs.msg import Twist
 
 class HandDetector:
     def __init__(self):
+
         self.sub = rospy.Subscriber("/bebop/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.hands_status_sub = rospy.Subscriber("/bebop/hands_status", String, self.hands_status_callback, queue_size=1)
         self.drone_status_sub = rospy.Subscriber("bebop/enable", Empty, self.drone_status_callback)
+        
         self.flight_pub = rospy.Publisher("/bebop/cmd_vel", Twist, queue_size=1)
         self.out_pub = rospy.Publisher("/bebop/out_image", Image, queue_size=1)
 
         self.drone_armed = False
-        
+
+        # Gesture Recognizer 
         self.br = CvBridge()
         self.mp_detector = mp.solutions.hands
         self.hand_detector = self.mp_detector.Hands(min_detection_confidence=0.75, min_tracking_confidence=0.5, max_num_hands=1)
 
         self.image_size = None
-
-        self.yaw_pid = [1, 0.2, 0.01]
-        self.previous_yaw_error = 0
-        self.yaw_integral = 0
-
-        self.z_pid = [1, 0.2, 0.01]
-        self.previous_z_error = 0
-        self.z_integral = 0
-
-        self.x_pid = [1, 0.2, 0.01]
-        self.previous_x_error = 0
-        self.safe_zone = [40, 65]
         self.lower_error_bound, self.upper_error_bound = 0, 0
-        self.x_integral = 0
-
         self.mp_draw = mp.solutions.drawing_utils
         self.right_counter, self.left_counter = 0, 0
 
         self.display = True
         self.max_euclidean_error = 0
 
-        self.delta_time = 0.1
+        # Control 
+        self.dt = 0.1
+        self.yaw_pid = PID(p = 1, i = 0.2, d = 0.01, sat = 1, dt = self.dt)
+        self.z_pid = PID(p = 1, i = 0.2, d = 0.01, sat = 1, dt = self.dt)
+        self.x_pid = PID(p = 1, i = 0.2, d = 0.01, sat = 1, dt = self.dt)
+        
+        # self.yaw_pid = [1, 0.2, 0.01]
+        # self.previous_yaw_error = 0
+        # self.yaw_integral = 0
+
+        #self.z_pid = [1, 0.2, 0.01]
+        #self.previous_z_error = 0
+        #self.z_integral = 0
+
+        #self.x_pid = [1, 0.2, 0.01]
+        #self.previous_x_error = 0
+        #self.safe_zone = [40, 65]
+        #self.x_integral = 0
+        
     
 
     def drone_status_callback(self, msg):
@@ -104,43 +112,49 @@ class HandDetector:
 
         '''/bebop/out_image
         Publish a geometry_msgs/Twist to cmd_vel topic 
-        linear.x  (+)      Translate forward
-          (-)      Translate backward
-        linear.y  (+)      Translate to left
-                (-)      Translate to right
-        linear.z  (+)      Ascend
-                (-)      Descend
-        angular.z (+)      Rotate counter clockwise
-                (-)      Rotate clockwise
+        linear.x  (+)      Translate forward       (-)      Translate backward
+        linear.y  (+)      Translate to left       (-)      Translate to right
+        linear.z  (+)      Ascend                  (-)      Descend
+        angular.z (+)      Rotate counter clockwise(-)      Rotate clockwise
         '''
 
         # YAW
         yaw_offset = self.image_size[0]//2
         yaw_error = (hand_center_x - yaw_offset) / yaw_offset # Normalized error between -1 and 1
-        yaw_proportional = self.yaw_pid[0]*yaw_error
-        self.yaw_integral = self.yaw_integral + self.yaw_pid[1] * yaw_error * self.delta_time
-        yaw_derivative = self.yaw_pid[2]*(yaw_error - self.previous_yaw_error)/self.delta_time
-        yaw_speed =  yaw_proportional  + yaw_derivative # + self.yaw_integral
+        yaw_speed = yaw_pid.regulate(yaw_error,0)
+        
+        # Z Level
+        z_offset = self.image_size[1]//2
+        z_error = (hand_center_y - z_offset) / z_offset # Normalized error between -1 and 1
+        z_speed = z_pid.regulate(z_error,0)
+        # z_speed = - z_pid.regulate(z_error,0)
+        
+        # X - Forward Backward
+        x_error = dist - np.mean(self.safe_zone) 
+        normalized_x_error = self.normalize_x_error(x_error) 
+        x_speed = x_pid.regulate(x_error,0)
+        # x_speed = - x_pid.regulate(x_error,0)
+        
+        
+        # yaw_proportional = self.yaw_pid[0]*yaw_error
+        # self.yaw_integral = self.yaw_integral + self.yaw_pid[1] * yaw_error * self.delta_time
+        # yaw_derivative = self.yaw_pid[2]*(yaw_error - self.previous_yaw_error)/self.delta_time
+        # yaw_speed =  yaw_proportional  + yaw_derivative # + self.yaw_integral
 
         # yaw_speed = int(np.clip(yaw_speed, -yaw_limit, yaw_limit))
         # yaw_speed = yaw_speed / yaw_limit # Normalize between -1 and 1
+        
+        # z_proportional = self.z_pid[0]*z_error
+        # self.z_integral = self.z_integral + self.yaw_pid[1] * z_error * self.delta_time
+        # z_derivative = self.z_pid[2]*(z_error - self.previous_z_error)
+        # z_speed = -(z_proportional + z_derivative) # self.z_integral
 
-        # Z Level
-        z_offset = self.image_size[1]//2
-        z_error = (hand_center_y - z_offset) / z_offset
-        z_proportional = self.z_pid[0]*z_error
-        self.z_integral = self.z_integral + self.yaw_pid[1] * z_error * self.delta_time
-        z_derivative = self.z_pid[2]*(z_error - self.previous_z_error)
-        z_speed = -(z_proportional + z_derivative) # self.z_integral
+        
 
-        # X - Forward Backward
-        x_error = dist - np.mean(self.safe_zone)
-        normalized_x_error = self.normalize_x_error(x_error)
-
-        x_proportional = self.x_pid[0]*normalized_x_error
-        self.x_integral = self.x_integral + self.x_pid[1] * normalized_x_error * self.delta_time
-        x_derivative = self.x_pid[2]*(normalized_x_error - self.previous_x_error)
-        x_speed = -(x_proportional + x_derivative)# + self.x_integral 
+        # x_proportional = self.x_pid[0]*normalized_x_error
+        # self.x_integral = self.x_integral + self.x_pid[1] * normalized_x_error * self.delta_time
+        # x_derivative = self.x_pid[2]*(normalized_x_error - self.previous_x_error)
+        # x_speed = -(x_proportional + x_derivative)# + self.x_integral 
         # x_speed = np.clip(x_speed, -0.3, 0.3)
         # x_speed = int(np.clip(fb_speed, -20000, 2500))
         # x_speed = ((x_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
