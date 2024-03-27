@@ -15,7 +15,7 @@ class GestureRecognizer:
     def __init__(self):
         self.br = CvBridge()
         self.hands_status_pub = rospy.Publisher("/bebop/hands_status", String, queue_size=10)
-        self.flight_animations_pub = rospy.Publisher("/bebop/flip_fake", UInt8, queue_size=1)
+        self.flight_animations_pub = rospy.Publisher("/bebop/flip", UInt8, queue_size=1)
 
         self.sub = rospy.Subscriber("/bebop/image_raw", Image, self.image_callback, queue_size=1, buff_size=2**24)
         self.drone_status_sub = rospy.Subscriber("bebop/enable", Empty, self.drone_status_callback)

@@ -66,20 +66,6 @@ class HandDetector:
 
         image = cv2.cvtColor(flipped_frame, cv2.COLOR_RGB2BGR)
 
-
-
-        #frame = self.br.imgmsg_to_cv2(msg)
-        # frame = cv2.resize(frame, (856, 480))
-        #self.image_size = [frame.shape[1], frame.shape[0]]
-
-        #flipped_frame = cv2.flip(frame, 1)
-        
-        #rgb_frame = cv2.cvtColor(flipped_frame, cv2.COLOR_BGR2RGB)
-        #rgb_frame.flags.writeable = False
-        #result = self.hand_detector.process(rgb_frame)
-
-        # image = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
-
         if result.multi_hand_landmarks:
             for hand in result.multi_hand_landmarks:
                 mf_coords, wrist_coords = self.get_hand_reference(hand, result)
@@ -141,7 +127,7 @@ class HandDetector:
         self.x_integral = self.x_integral + self.x_pid[1] * normalized_x_error * self.delta_time
         x_derivative = self.x_pid[2]*(normalized_x_error - self.previous_x_error)
         x_speed = -(x_proportional + x_derivative)# + self.x_integral 
-        # x_speed = np.clip(x_speed, -0.3, 0.3)
+        x_speed = np.clip(x_speed, -0.3, 0.3)
         # x_speed = int(np.clip(fb_speed, -20000, 2500))
         # x_speed = ((x_speed - (-20000)) / (2500 - (-20000))) * (1 - (-1)) + (-1)
         
@@ -152,11 +138,11 @@ class HandDetector:
         flight_commands_msg = Twist()
         flight_commands_msg.linear.x = x_speed
         flight_commands_msg.linear.y = 0
-        flight_commands_msg.linear.z = 0
+        flight_commands_msg.linear.z = z_speed
         flight_commands_msg.angular.z = yaw_speed
 
-        # self.flight_pub.publish(flight_commands_msg)
-        rospy.loginfo(f"SPEED: {z_speed}")
+        self.flight_pub.publish(flight_commands_msg)
+        # rospy.loginfo(f"SPEED: {z_speed}")
         # rospy.loginfo(f"DIST: {dist}")
         # rospy.loginfo(f"Normalized error {normalized_x_error}")
     
