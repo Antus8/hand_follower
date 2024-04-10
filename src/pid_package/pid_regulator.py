@@ -25,9 +25,9 @@ class PID:
 
             if self.prev_t > 0.0 and dt > 0.0:
                 derr_dt = (err - self.prev_err)/dt
-                self.integral += 0.5*(err + self.prev_err)*dt # more accuracy in the error value
+                # self.integral += 0.5*(err + self.prev_err)*dt # more accuracy in the error value
                 # general formula 
-                # self.integral += err*dt 
+                self.integral += err*dt 
 
             u = self.p*err + self.d*derr_dt + self.i*self.integral
 
