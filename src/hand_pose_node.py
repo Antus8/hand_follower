@@ -141,8 +141,8 @@ class HandDetector:
         flight_commands_msg.linear.z = z_speed
         flight_commands_msg.angular.z = yaw_speed
 
-        self.flight_pub.publish(flight_commands_msg)
-        # rospy.loginfo(f"SPEED: {z_speed}")
+        # self.flight_pub.publish(flight_commands_msg)
+        # rospy.loginfo(f"SPEED: {x_speed}")
         # rospy.loginfo(f"DIST: {dist}")
         # rospy.loginfo(f"Normalized error {normalized_x_error}")
     
